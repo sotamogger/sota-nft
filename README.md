@@ -40,7 +40,7 @@ tokens.
 - Per-seat `(price, researcher, thesis, modifiers[], minted)`; frozen once minted
 - Minting is gated by `IMintGate` (a seat mints only once holders ratify it —
   reuses the CanonGate ratification contract); proceeds forward to the treasury
-- 10 passing tests (`forge test`)
+- 11 passing tests (`forge test`)
 
 ## Mechanisms — open design
 
