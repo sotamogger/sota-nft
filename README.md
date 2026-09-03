@@ -62,6 +62,10 @@ forge install OpenZeppelin/openzeppelin-contracts@v5.4.0 --no-git
 forge test
 ```
 
-SOTA side of the living loop is built (`appendModifier` gated to a modifier
-gate, expiry-based decay via `activeModifiers()`). Pending: bird-is-spy's
-modifier-proposal gate, then deploy + metadata/render endpoints.
+The living loop is complete: **ModifierGate** lets holders propose a modifier
+`(seatId, value, expiresAt, thresholdBps)` and sign with their MINDS weight;
+on clearing the threshold it calls `appendModifier` on the token. 5000 bps =
+majority (awards), 6667 = supermajority (negative modifiers). 19 tests green.
+
+Deploy order: SOTA → ModifierGate(votesToken, nft) → `nft.setModifierGate(gate)`
+(plus the mint gate). Pending: deploy + a metadata/render endpoint.
