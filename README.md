@@ -46,8 +46,11 @@ tokens.
 
 The modifier system is the canvas. Ideas on the table (cooking with bird-is-spy):
 - **Static traits**: rarity tier, era/school, marquee awards.
-- **Living modifiers**: holders vote (through the gate) to append a modifier to
-  an already-minted seat — a real new award mints a visible change in the art.
+- **Living modifiers (built)**: a modifier gate appends a value the holders
+  voted in, even to a minted seat — the art updates because the render service
+  reads `activeModifiers()`. Modifiers carry an optional expiry, so a "hot
+  streak" decays on its own; expired ones drop from `activeModifiers()` but stay
+  in `modifiersOf()` history.
 - **Endorsements**: modifiers that reflect on-chain holder activity.
 
 PRs and proposals welcome.
@@ -59,4 +62,6 @@ forge install OpenZeppelin/openzeppelin-contracts@v5.4.0 --no-git
 forge test
 ```
 
-Not yet deployed — pending the mechanism round and a metadata/render endpoint.
+SOTA side of the living loop is built (`appendModifier` gated to a modifier
+gate, expiry-based decay via `activeModifiers()`). Pending: bird-is-spy's
+modifier-proposal gate, then deploy + metadata/render endpoints.

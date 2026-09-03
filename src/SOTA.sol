@@ -39,10 +39,21 @@ contract SOTA is ERC721, ERC2981, Ownable, ReentrancyGuard {
         bool minted;
     }
 
+    // A modifier is a string plus an optional expiry (0 = permanent). Decay is
+    // enforced downstream: activeModifiers() and the render service drop any
+    // whose expiresAt has passed, so a "hot streak" fades on its own.
+    struct Modifier {
+        string value;
+        uint48 expiresAt;
+    }
+
     mapping(uint256 => Seat) private _seats;
-    mapping(uint256 => string[]) private _modifiers; // seatId => modifier list
+    mapping(uint256 => Modifier[]) private _modifiers; // seatId => modifiers
     address public treasury;
     IMintGate public mintGate;
+    // The contract allowed to append modifiers to minted seats — the modifier
+    // gate (holders vote a value in; on pass the gate calls appendModifier).
+    address public modifierGate;
 
     // Off-chain services, both swappable. `metadataBase` is the metadata
     // resolver (tokenURI = metadataBase + id); it reads this contract and,
@@ -53,7 +64,9 @@ contract SOTA is ERC721, ERC2981, Ownable, ReentrancyGuard {
 
     event SeatSet(uint256 indexed seatId, uint256 price, string researcher, string thesis);
     event ModifiersSet(uint256 indexed seatId, string[] modifiers);
+    event ModifierAppended(uint256 indexed seatId, string value, uint48 expiresAt);
     event MintGateSet(address indexed gate);
+    event ModifierGateSet(address indexed gate);
     event TreasurySet(address indexed treasury);
     event ServicesSet(string metadataBase, string imageService);
     event Minted(uint256 indexed seatId, address indexed recipient, uint256 paid);
@@ -76,8 +89,23 @@ contract SOTA is ERC721, ERC2981, Ownable, ReentrancyGuard {
         return (s.price, s.researcher, s.thesis, s.minted);
     }
 
-    function modifiersOf(uint256 seatId) external view returns (string[] memory) {
+    // Every modifier ever set, expired or not (for auditing / history).
+    function modifiersOf(uint256 seatId) external view returns (Modifier[] memory) {
         return _modifiers[seatId];
+    }
+
+    // Only the currently-live modifier strings — what the render service draws.
+    function activeModifiers(uint256 seatId) external view returns (string[] memory active) {
+        Modifier[] storage all = _modifiers[seatId];
+        uint256 n;
+        for (uint256 i; i < all.length; ++i) {
+            if (all[i].expiresAt == 0 || all[i].expiresAt > block.timestamp) ++n;
+        }
+        active = new string[](n);
+        uint256 j;
+        for (uint256 i; i < all.length; ++i) {
+            if (all[i].expiresAt == 0 || all[i].expiresAt > block.timestamp) active[j++] = all[i].value;
+        }
     }
 
     function _baseURI() internal view override returns (string memory) {
@@ -95,13 +123,30 @@ contract SOTA is ERC721, ERC2981, Ownable, ReentrancyGuard {
         emit SeatSet(seatId, price, researcher, thesis);
     }
 
-    // Modifiers can be re-set while the seat is unminted. Post-mint mutation
-    // (e.g. governance appending a new award) is a mechanism to add later.
+    // Owner seeds the starting modifiers (all permanent) while the seat is
+    // unminted. After mint, only the modifier gate may add more.
     function setModifiers(uint256 seatId, string[] calldata mods) external onlyOwner {
         require(seatId < MAX_SEATS, "bad seat");
         require(!_seats[seatId].minted, "seat frozen");
-        _modifiers[seatId] = mods;
+        delete _modifiers[seatId];
+        for (uint256 i; i < mods.length; ++i) {
+            _modifiers[seatId].push(Modifier(mods[i], 0));
+        }
         emit ModifiersSet(seatId, mods);
+    }
+
+    // The living loop: the modifier gate appends a value the holders voted in.
+    // `expiresAt` of 0 is permanent; a future timestamp decays on its own.
+    function appendModifier(uint256 seatId, string calldata value, uint48 expiresAt) external {
+        require(msg.sender == modifierGate, "not modifier gate");
+        require(seatId < MAX_SEATS, "bad seat");
+        _modifiers[seatId].push(Modifier(value, expiresAt));
+        emit ModifierAppended(seatId, value, expiresAt);
+    }
+
+    function setModifierGate(address gate_) external onlyOwner {
+        modifierGate = gate_;
+        emit ModifierGateSet(gate_);
     }
 
     function setMintGate(address gate_) external onlyOwner {

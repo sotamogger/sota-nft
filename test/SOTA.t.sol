@@ -28,10 +28,39 @@ contract SOTATest is Test {
     }
 
     function test_modifiers_stored() public view {
-        string[] memory m = nft.modifiersOf(1);
+        SOTA.Modifier[] memory m = nft.modifiersOf(1);
         assertEq(m.length, 3);
-        assertEq(m[0], "founder");
-        assertEq(m[2], "deepmind");
+        assertEq(m[0].value, "founder");
+        assertEq(m[2].value, "deepmind");
+        assertEq(m[0].expiresAt, 0); // seeded modifiers are permanent
+    }
+
+    function test_gate_appends_modifier_and_decays() public {
+        address modGate = makeAddr("modGate");
+        nft.setModifierGate(modGate);
+
+        // non-gate cannot append
+        vm.expectRevert("not modifier gate");
+        nft.appendModifier(1, "hot-streak", 0);
+
+        // gate appends a permanent award and a decaying one
+        vm.prank(modGate);
+        nft.appendModifier(1, "acm-prize", 0);
+        vm.prank(modGate);
+        nft.appendModifier(1, "hot-streak", uint48(block.timestamp + 30 days));
+
+        assertEq(nft.modifiersOf(1).length, 5);
+        assertEq(nft.activeModifiers(1).length, 5); // all live now
+
+        // after the streak expires it drops from active but stays in history
+        vm.warp(block.timestamp + 31 days);
+        string[] memory active = nft.activeModifiers(1);
+        assertEq(active.length, 4);
+        assertEq(nft.modifiersOf(1).length, 5);
+        // the expired one ("hot-streak") is gone from active
+        for (uint256 i; i < active.length; ++i) {
+            assertTrue(keccak256(bytes(active[i])) != keccak256(bytes("hot-streak")));
+        }
     }
 
     function test_gate_reverts_when_not_ratified() public {
@@ -84,6 +113,12 @@ contract SOTATest is Test {
         string[] memory m = new string[](1); m[0] = "late";
         vm.expectRevert("seat frozen");
         nft.setModifiers(1, m);
+        // but the gate can still append to a minted seat (the living loop)
+        address modGate = makeAddr("modGate");
+        nft.setModifierGate(modGate);
+        vm.prank(modGate);
+        nft.appendModifier(1, "post-mint-award", 0);
+        assertEq(nft.modifiersOf(1).length, 4);
     }
 
     function test_royalty_targets_treasury() public view {
